@@ -1,25 +1,45 @@
-# Azure Databricks E-Commerce Lakehouse
+# 🏗️ Azure Databricks E-Commerce Lakehouse Pipeline
 
-A production-grade **Medallion Architecture** pipeline built on Azure Databricks and Delta Lake, using the Brazilian Olist E-Commerce dataset (100K+ orders, 9 source tables). Demonstrates end-to-end Data Engineering patterns — ingestion, cleaning, modelling, and data quality enforcement — with Unity Catalog governance across all three layers.
+> End-to-end Medallion Architecture (Bronze/Silver/Gold) data pipeline built on Azure Databricks, processing **1.5M+ Brazilian e-commerce records** into governed, business-ready analytics tables with Unity Catalog governance.
+
+![Python](https://img.shields.io/badge/Python-3.10-blue?logo=python)
+![PySpark](https://img.shields.io/badge/PySpark-3.5-orange?logo=apache-spark)
+![Delta Lake](https://img.shields.io/badge/Delta_Lake-3.0-blue)
+![Azure Databricks](https://img.shields.io/badge/Azure_Databricks-Premium-red?logo=databricks)
+![Unity Catalog](https://img.shields.io/badge/Unity_Catalog-Enabled-purple)
+![ADLS Gen2](https://img.shields.io/badge/ADLS-Gen2-blue?logo=microsoft-azure)
 
 ---
 
-## Architecture
+## Architecture Overview
 
-```
-Raw CSVs (ADLS Gen2 Bronze Container)
-        |
-        v
-  [ Bronze Layer ]   — Raw Delta tables, schema-on-read, no transformations
-        |
-        v
-  [ Silver Layer ]   — Cleaned, deduplicated, MERGE INTO upserts, Delta constraints
-        |
-        v
-  [ Gold Layer ]     — Star schema (fact + 4 dims), optimized for analytics
-```
+![Architecture Simple](docs/screenshots/architecture_simple.png)
 
-All three layers are governed by **Unity Catalog** (`ecommerce_dev` catalog → `bronze` / `silver` / `gold` schemas), with external Delta tables backed by ADLS Gen2.
+---
+
+## Detailed Architecture
+
+![Architecture Detailed](docs/screenshots/architecture_detailed.png)
+
+---
+
+## Business Problem
+
+An e-commerce company has raw transactional data landing in cloud storage as messy CSV files. Analysts cannot trust the data:
+
+- Duplicates and nulls across order and payment records
+- Inconsistent schemas and data types
+- No single source of truth
+- Every team building its own one-off extracts
+- Conflicting numbers in reports
+
+**This project solves all of that.**
+
+---
+
+## Solution
+
+A governed Bronze/Silver/Gold Lakehouse on Delta Lake that delivers clean, deduplicated, business-ready Gold tables. Every team consumes one trusted source, data quality is enforced at each layer, and the pipeline runs automatically every night.
 
 ---
 
@@ -27,168 +47,256 @@ All three layers are governed by **Unity Catalog** (`ecommerce_dev` catalog → 
 
 | Layer | Technology |
 |---|---|
-| Cloud Platform | Microsoft Azure |
-| Compute | Azure Databricks (Unity Catalog cluster) |
-| Storage | ADLS Gen2 |
+| Cloud Storage | Azure Data Lake Storage Gen2 |
+| Compute | Azure Databricks |
+| Processing | PySpark |
 | Table Format | Delta Lake |
-| Governance | Unity Catalog + External Locations |
-| Language | PySpark, SQL |
-| Source Data | Brazilian Olist E-Commerce (Kaggle) |
-
----
-
-## Project Structure
-
-```
-azure-databricks-ecommerce-lakehouse/
-├── notebooks/
-│   ├── 01_bronze_ingest.py          # Raw CSV → Bronze Delta tables
-│   ├── 02_silver_clean.py           # Cleaning, MERGE INTO, Delta constraints
-│   ├── 03_gold_model.py             # Star schema fact + dimension tables
-│   └── 04_unity_catalog_ops.py      # Unity Catalog setup and validation
-├── docs/
-│   └── screenshots/                 # Dashboard and pipeline run evidence
-└── README.md
-```
-
----
-
-## Pipeline Detail
-
-### Bronze Layer — 9 Tables
-
-Ingests all 9 raw Olist CSVs from ADLS Gen2 into Delta tables with zero transformation. Schema drift is handled via `mergeSchema` option to avoid pipeline failures when upstream columns change.
-
-**Key decision:** Store raw data as Delta (not CSV) from the first touch. This enables time travel for debugging, audit trails, and schema evolution without re-ingesting from source.
-
-Tables: `orders`, `order_items`, `order_payments`, `order_reviews`, `customers`, `products`, `sellers`, `geolocation`, `product_category_name_translation`
-
-### Silver Layer — 7 Tables
-
-Applies business-level cleaning: null removal, type casting, duplicate elimination, and standardised column names. Uses **MERGE INTO** for all incremental loads instead of `overwrite`.
-
-**Why MERGE instead of overwrite?**
-`overwrite` deletes everything and rewrites — if the pipeline fails mid-write, data is lost. MERGE is idempotent: running it once or ten times produces the same correct result. Run 1 inserts new rows; Run 2 finds the same rows, updates in place, no duplicates, no data loss.
-
-**Delta constraints** enforce data quality at table level — any write violating a rule is rejected by the engine itself:
-
-```sql
-ALTER TABLE ecommerce_dev.silver.order_payments
-  ADD CONSTRAINT chk_payment_value CHECK (payment_value >= 0);
-
-ALTER TABLE ecommerce_dev.silver.order_reviews
-  ADD CONSTRAINT chk_review_score CHECK (review_score BETWEEN 1 AND 5);
-```
-
-This creates two-level quality enforcement: cleaning at ingestion time + hard rejection for any future bad data.
-
-**Late-arriving payments** handled via composite key MERGE (`order_id + payment_sequential`) — a single order can have multiple payment rows, so a single-column key would cause incorrect merges.
-
-### Gold Layer — Star Schema (5 Tables)
-
-Aggregates Silver into an analytics-ready star schema:
-
-| Table | Type | Description |
-|---|---|---|
-| `fact_orders` | Fact | One row per order with all revenue metrics |
-| `dim_customers` | Dimension | Customer location and profile |
-| `dim_products` | Dimension | Product category and attributes |
-| `dim_sellers` | Dimension | Seller location and profile |
-| `dim_date` | Dimension | Date spine for time-based analysis |
-
-**OPTIMIZE and ZORDER** applied at Gold layer for query performance:
-
-```sql
-OPTIMIZE ecommerce_dev.gold.fact_orders ZORDER BY (order_date, customer_id);
-```
-
-This compacts small Delta files and co-locates related data so date-range queries and customer joins skip unnecessary file reads.
-
----
-
-## Key Engineering Decisions
-
-**1. Unity Catalog over Hive Metastore**
-Unity Catalog provides fine-grained access control, cross-workspace data sharing, and audit lineage — necessary for any production multi-team environment. All three layer schemas live under a single `ecommerce_dev` catalog, making governance and discovery consistent.
-
-**2. External Tables over Managed Tables**
-Used external Delta tables backed by ADLS Gen2 external locations (`ext_bronze`, `ext_silver`, `ext_gold`). Dropping a table does not delete the underlying data — critical for production environments where the storage layer outlives any single pipeline or workspace.
-
-**3. Idempotent Pipeline Design**
-Every notebook can be re-run without side effects. Bronze uses `mergeSchema` with overwrite for raw snapshots. Silver and Gold use MERGE INTO — the pipeline produces the same correct output whether it runs once or is re-triggered ten times after a failure.
-
-**4. Two-Level Data Quality**
-Cleaning logic in PySpark catches nulls and type issues at ingestion time. Delta constraints at table level catch any future writes that violate business rules — even from ad hoc queries or other pipelines writing to the same table.
+| Governance | Unity Catalog |
+| Orchestration | Databricks Workflows |
+| Dashboard | Databricks AI/BI Dashboard |
+| Version Control | GitHub |
 
 ---
 
 ## Dataset
 
-Brazilian Olist E-Commerce Public Dataset — 100K+ orders from 2016–2018, covering orders, payments, reviews, products, sellers, and customer geolocation across Brazil.
-
-Source: [Kaggle — Brazilian E-Commerce Public Dataset by Olist](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce)
+**Brazilian E-Commerce Public Dataset (Olist)**
+- Source: [Kaggle](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce)
+- 9 related CSV files
+- ~1.5M rows across all tables
+- Domain: Orders, Customers, Products, Payments, Reviews, Sellers
 
 ---
 
-## Setup
+## Azure Infrastructure
 
-### Prerequisites
-- Azure Databricks workspace with Unity Catalog enabled
-- ADLS Gen2 storage account
-- Access Connector for Azure Databricks (for Unity Catalog ADLS auth)
+![Resource Groups](docs/screenshots/azure_resource_groups.png)
 
-### Infrastructure
-```
-Storage Account : stlakehousedev225
-Resource Group  : data-engineering-dev
-Databricks WS   : dbw-enterprise-lakehouse
-UC Metastore    : metastore-lakehouse-dev (Central India)
-Catalog         : ecommerce_dev
-Schemas         : bronze | silver | gold
+![ADLS Containers](docs/screenshots/adls_containers.png)
+
+![Raw Files](docs/screenshots/adls_raw_files.png)
+
+---
+
+## Data Volume
+
+| Layer | Tables | Total Rows |
+|---|---|---|
+| Bronze | 9 | 1,556,460 |
+| Silver | 7 | 553,646 |
+| Gold | 5 | 248,546 |
+
+---
+
+## Bronze Layer
+
+Raw ingestion layer. Reads CSV files from ADLS `raw/` container and writes as Delta tables with audit columns.
+
+**Audit columns added:**
+- `_ingest_ts` — timestamp of when data arrived
+- `_source_file` — source file path for lineage
+
+![Bronze Tables](docs/screenshots/uc_bronze_tables.png)
+
+---
+
+## Silver Layer
+
+Data quality and cleaning layer.
+
+**What Silver does:**
+- Removes invalid data (review scores outside 1-5)
+- Casts data types (string → integer, string → timestamp)
+- MERGE INTO on orders and payments (idempotent upserts)
+- Delta constraints enforce hard data quality rules
+
+**Delta Constraints applied:**
+```sql
+order_id IS NOT NULL
+payment_value >= 0
+review_score BETWEEN 1 AND 5
+price > 0
 ```
 
-### Run Order
-```
-1. 04_unity_catalog_ops.py   — Create catalog, schemas, external locations
-2. 01_bronze_ingest.py       — Ingest raw CSVs into Bronze Delta tables
-3. 02_silver_clean.py        — Clean and MERGE into Silver tables
-4. 03_gold_model.py          — Build Gold star schema
+![Silver Tables](docs/screenshots/uc_silver_tables.png)
+
+![MERGE Output](docs/screenshots/merge_output_orders.png)
+
+---
+
+## Gold Layer — Star Schema
+
+Business analytics layer. Joins 7 Silver tables into a dimensional model optimized for reporting.
+fact_orders (113,425 rows)
+
+├── dim_customer  (99,441 rows)
+
+├── dim_product   (32,951 rows)
+
+├── dim_seller    (3,095 rows)
+
+└── dim_date      (634 rows)
+
+**Aggregations applied:**
+- Payments aggregated per order (`SUM payment_value`)
+- Reviews aggregated per order (`AVG review_score`)
+
+**Performance optimizations:**
+- `OPTIMIZE` — compacted 4 files into 1
+- `ZORDER BY (order_date, customer_id)` — speeds up date range and customer queries
+
+![Gold Tables](docs/screenshots/uc_gold_tables.png)
+
+![ADLS Gold Container](docs/screenshots/adls_gold_container.png)
+
+---
+
+## Unity Catalog Governance
+
+![Catalog Explorer](docs/screenshots/uc_catalog_explorer.png)
+
+![Metastore](docs/screenshots/uc_metastore.png)
+
+![External Locations](docs/screenshots/external_locations.png)
+
+**Governance setup:**
+- Metastore: `metastore-lakehouse-dev` (Central India)
+- Catalog: `ecommerce_dev`
+- Schemas: `bronze`, `silver`, `gold`
+- External Locations: `ext_bronze`, `ext_silver`, `ext_gold`
+- Storage Credential: Access Connector (Managed Identity)
+- Table comments on all Gold tables
+- Delta Time Travel demonstrated
+
+**Table Lineage:**
+
+![Lineage 1](docs/screenshots/uc_lineage_fact_orders_1.png)
+
+![Lineage 2](docs/screenshots/uc_lineage_fact_orders_2.png)
+
+---
+
+## Delta Time Travel
+
+![Delta History](docs/screenshots/delta_history_fact_orders.png)
+
+```python
+# Query any previous version
+spark.read.format("delta") \
+    .option("versionAsOf", 0) \
+    .table("ecommerce_dev.gold.fact_orders")
 ```
 
 ---
 
 ## Dashboard
 
-Databricks SQL dashboard built on Gold layer queries:
+Built on Databricks AI/BI Dashboard querying Gold tables directly via Unity Catalog.
 
-| Chart | Type | Insight |
-|---|---|---|
-| Revenue Trend by Month | Line | Growth from Oct 2016 → peak ~1M/month in late 2017 |
-| Top 10 Product Categories by Revenue | Donut | `beleza_saude` and `relogios_presentes` lead |
-| Sellers Chart by State | Bar | SP (São Paulo) dominates — ~9M total revenue |
-| Customer Distribution by State | Bar | SP again leads with ~40K customers |
-| Order Status Distribution | Bar | ~100K+ delivered orders — pipeline health confirmed |
+![Dashboard](docs/screenshots/dashboard.png)
 
-![Databricks SQL Dashboard](docs/screenshots/dashboard.png)
-
-## Unity Catalog Lineage
-
-Unity Catalog automatically tracks the full data lineage from Silver → Gold. The graph below shows the four Silver tables (`orders`, `reviews`, `order_items`, `payments`) flowing into `fact_orders` with column-level visibility and timestamped activity.
-
-![UC Lineage — fact_orders (1)](docs/screenshots/uc_lineage_fact_orders_1.png)
-![UC Lineage — fact_orders (2)](docs/screenshots/uc_lineage_fact_orders_2.png)
+**Charts:**
+- Revenue Trend by Month (Line chart)
+- Top 10 Product Categories by Revenue (Pie chart)
+- Order Status Distribution — 97% delivered (Bar chart)
+- Top 10 Sellers by State — SP dominant (Bar chart)
+- Customer Distribution by State (Bar chart)
 
 ---
 
-## What This Demonstrates
+## Orchestration — Databricks Workflows
 
-- Medallion Architecture (Bronze / Silver / Gold) on Databricks
-- Unity Catalog setup: metastore, storage credentials, external locations
-- Delta Lake: MERGE INTO, constraints, OPTIMIZE, ZORDER, Time Travel
-- Production patterns: idempotency, schema drift handling, composite key upserts
-- Star schema modelling for analytics workloads
-- Data quality enforcement at both pipeline and table level
+Automated pipeline running daily at 2:00 AM IST.
+
+![Job Run Graph](docs/screenshots/job_run_graph.png)
+
+![Job Run Success](docs/screenshots/job_run_success.png)
+
+**Job:** `ecommerce_medallion_pipeline`
+
+Task 1: bronze_ingest   → 01_bronze_ingest notebook
+
+Task 2: silver_clean    → 02_silver_clean notebook (depends on Task 1)
+
+Task 3: gold_model      → 03_gold_model notebook  (depends on Task 2)
 
 ---
 
-*Built as part of an Azure Data Engineering portfolio. See also: [NYC Taxi Lakehouse](https://github.com/AlvinDavid225/nyc-taxi-lakehouse) | [Retail ADF Pipeline](https://github.com/AlvinDavid225/retail-adf-pipeline)*
+## Key Challenges Solved
+
+**1. Schema Drift**
+Added `mergeSchema=true` to Bronze writes — handles new columns automatically without breaking the pipeline.
+
+**2. Late-Arriving Payments**
+Replaced `mode("overwrite")` with Delta `MERGE INTO` on orders and payments — idempotent upserts handle late arrivals without duplicates.
+
+**3. Data Quality Enforcement**
+Enforced at two levels — cleaning during ingestion and Delta constraints as hard rules that reject future bad data automatically.
+
+**4. Joining 9 Normalized Tables**
+Built a star schema Gold layer joining 4 Silver tables into `fact_orders` with aggregated payment totals and average review scores per order.
+
+**5. Idempotent Re-runs**
+Validated end-to-end by dropping all 21 tables, clearing all ADLS containers, and rerunning the full pipeline — all tables passed row count validation on every run.
+
+---
+
+## Project Structure
+
+azure-databricks-ecommerce-lakehouse/
+
+├── notebooks/
+
+│   ├── 01_bronze_ingest.ipynb
+
+│   ├── 02_silver_clean.ipynb
+
+│   ├── 03_gold_model.ipynb
+
+│   └── 04_unity_catalog_operations.ipynb
+
+├── docs/
+
+│   └── screenshots/
+
+└── README.md
+
+![Notebooks](docs/screenshots/workspace_notebooks.png)
+
+---
+
+## How to Run
+
+**Prerequisites:**
+- Azure subscription
+- Azure Databricks workspace (Premium tier recommended)
+- ADLS Gen2 storage account
+- Unity Catalog metastore configured
+
+**Steps:**
+1. Upload Olist CSVs to ADLS `raw/` container
+2. Configure Unity Catalog metastore and external locations
+3. Run `01_bronze_ingest` — ingests 9 CSVs into Bronze Delta tables
+4. Run `02_silver_clean` — cleans and writes to Silver
+5. Run `03_gold_model` — builds star schema in Gold
+6. Run `04_unity_catalog_operations` — applies governance
+
+Or run automatically via Databricks Workflow job `ecommerce_medallion_pipeline`.
+
+---
+
+## Resume Bullets
+
+- Designed and built an end-to-end Lakehouse on Azure Databricks using Medallion Architecture (Bronze/Silver/Gold), processing 1.5M+ e-commerce records into governed, business-ready tables
+- Implemented idempotent incremental loads with Delta MERGE INTO, schema enforcement, and OPTIMIZE/ZORDER, ensuring pipeline reliability through full end-to-end rerun validation
+- Established Unity Catalog governance with 3-level namespace, external locations, managed identity authentication, table lineage, and table comments
+- Enforced data quality at two levels — cleaning during ingestion and Delta constraints as hard rules rejecting future bad data automatically
+- Orchestrated end-to-end pipeline using Databricks Workflows with dependency management across Bronze, Silver, and Gold layers, scheduled daily at 2 AM IST
+
+---
+
+## Author
+
+**Alvin David**  
+Data Engineer | Kochi, Kerala  
+GitHub: [github.com/AlvinDavid225](https://github.com/AlvinDavid225)
