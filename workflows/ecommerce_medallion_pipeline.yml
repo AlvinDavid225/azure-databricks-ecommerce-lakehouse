@@ -1,0 +1,30 @@
+resources:
+  jobs:
+    ecommerce_medallion_pipeline:
+      name: ecommerce_medallion_pipeline
+      schedule:
+        quartz_cron_expression: 49 0 2 * * ?
+        timezone_id: Asia/Calcutta
+        pause_status: UNPAUSED
+      tasks:
+        - task_key: bronze_ingest
+          notebook_task:
+            notebook_path: /Workspace/Users/alvindavid225_gmail.com#ext#@alvindavid225gmail.onmicrosoft.com/dbw-enterprise-workspace/01_bronze_ingest
+            source: WORKSPACE
+          existing_cluster_id: 0625-141037-0dezic2j
+        - task_key: silver_clean
+          depends_on:
+            - task_key: bronze_ingest
+          notebook_task:
+            notebook_path: /Workspace/Users/alvindavid225_gmail.com#ext#@alvindavid225gmail.onmicrosoft.com/dbw-enterprise-workspace/02_silver_clean
+            source: WORKSPACE
+          existing_cluster_id: 0625-141037-0dezic2j
+        - task_key: gold_model
+          depends_on:
+            - task_key: silver_clean
+          notebook_task:
+            notebook_path: /Workspace/Users/alvindavid225_gmail.com#ext#@alvindavid225gmail.onmicrosoft.com/dbw-enterprise-workspace/03_gold_model
+            source: WORKSPACE
+          existing_cluster_id: 0625-141037-0dezic2j
+      queue:
+        enabled: true
