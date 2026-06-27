@@ -1,0 +1,76 @@
+<svg width="100%" viewBox="0 0 680 820" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>Azure Databricks E-Commerce Lakehouse Architecture</title>
+<desc>Medallion architecture pipeline from raw CSVs through Bronze, Silver, Gold layers to dashboard and orchestration</desc>
+<defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M2 1L8 5L2 9" fill="none" stroke="#888780" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+</defs>
+
+<!-- SOURCE -->
+<rect x="190" y="30" width="300" height="56" rx="8" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.5"/>
+<text font-family="sans-serif" font-size="14" font-weight="500" fill="#2C2C2A" x="340" y="52" text-anchor="middle" dominant-baseline="central">Data source</text>
+<text font-family="sans-serif" font-size="12" fill="#5F5E5A" x="340" y="70" text-anchor="middle" dominant-baseline="central">9 Olist CSVs · ADLS Gen2 raw/</text>
+
+<!-- Arrow 1 -->
+<line x1="340" y1="86" x2="340" y2="126" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+<!-- BRONZE -->
+<rect x="140" y="126" width="400" height="80" rx="8" fill="#FAEEDA" stroke="#BA7517" stroke-width="0.5"/>
+<text font-family="sans-serif" font-size="14" font-weight="500" fill="#412402" x="340" y="152" text-anchor="middle" dominant-baseline="central">Bronze layer</text>
+<text font-family="sans-serif" font-size="12" fill="#854F0B" x="340" y="172" text-anchor="middle" dominant-baseline="central">9 Delta tables · 1,556,460 rows</text>
+<text font-family="sans-serif" font-size="12" fill="#854F0B" x="340" y="190" text-anchor="middle" dominant-baseline="central">Schema-on-read · audit columns · mergeSchema</text>
+
+<!-- Arrow 2 -->
+<line x1="340" y1="206" x2="340" y2="246" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+<!-- SILVER -->
+<rect x="140" y="246" width="400" height="100" rx="8" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.5"/>
+<text font-family="sans-serif" font-size="14" font-weight="500" fill="#04342C" x="340" y="272" text-anchor="middle" dominant-baseline="central">Silver layer</text>
+<text font-family="sans-serif" font-size="12" fill="#0F6E56" x="340" y="292" text-anchor="middle" dominant-baseline="central">7 Delta tables · 553,646 rows</text>
+<text font-family="sans-serif" font-size="12" fill="#0F6E56" x="340" y="310" text-anchor="middle" dominant-baseline="central">MERGE INTO · type casting · null removal</text>
+<text font-family="sans-serif" font-size="12" fill="#0F6E56" x="340" y="328" text-anchor="middle" dominant-baseline="central">Delta constraints · idempotent upserts</text>
+
+<!-- Arrow 3 -->
+<line x1="340" y1="346" x2="340" y2="386" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+<!-- GOLD -->
+<rect x="140" y="386" width="400" height="100" rx="8" fill="#FAECE7" stroke="#993C1D" stroke-width="0.5"/>
+<text font-family="sans-serif" font-size="14" font-weight="500" fill="#4A1B0C" x="340" y="412" text-anchor="middle" dominant-baseline="central">Gold layer — star schema</text>
+<text font-family="sans-serif" font-size="12" fill="#993C1D" x="340" y="432" text-anchor="middle" dominant-baseline="central">fact_orders (113,425) · dim_customer · dim_product</text>
+<text font-family="sans-serif" font-size="12" fill="#993C1D" x="340" y="450" text-anchor="middle" dominant-baseline="central">dim_seller · dim_date · OPTIMIZE + ZORDER</text>
+<text font-family="sans-serif" font-size="12" fill="#993C1D" x="340" y="468" text-anchor="middle" dominant-baseline="central">5 tables · 248,546 total rows</text>
+
+<!-- Arrows to Governance + Dashboard -->
+<line x1="240" y1="486" x2="180" y2="560" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
+<line x1="440" y1="486" x2="500" y2="560" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+<!-- GOVERNANCE -->
+<rect x="60" y="560" width="240" height="100" rx="8" fill="#EEEDFE" stroke="#534AB7" stroke-width="0.5"/>
+<text font-family="sans-serif" font-size="14" font-weight="500" fill="#26215C" x="180" y="586" text-anchor="middle" dominant-baseline="central">Governance</text>
+<text font-family="sans-serif" font-size="12" fill="#534AB7" x="180" y="606" text-anchor="middle" dominant-baseline="central">Unity Catalog · ecommerce_dev</text>
+<text font-family="sans-serif" font-size="12" fill="#534AB7" x="180" y="624" text-anchor="middle" dominant-baseline="central">ext_bronze · ext_silver · ext_gold</text>
+<text font-family="sans-serif" font-size="12" fill="#534AB7" x="180" y="642" text-anchor="middle" dominant-baseline="central">Table comments · lineage tracking</text>
+
+<!-- DASHBOARD -->
+<rect x="380" y="560" width="240" height="100" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+<text font-family="sans-serif" font-size="14" font-weight="500" fill="#042C53" x="500" y="586" text-anchor="middle" dominant-baseline="central">Dashboard</text>
+<text font-family="sans-serif" font-size="12" fill="#185FA5" x="500" y="606" text-anchor="middle" dominant-baseline="central">Databricks SQL · 5 charts</text>
+<text font-family="sans-serif" font-size="12" fill="#185FA5" x="500" y="624" text-anchor="middle" dominant-baseline="central">Revenue trend · category mix</text>
+<text font-family="sans-serif" font-size="12" fill="#185FA5" x="500" y="642" text-anchor="middle" dominant-baseline="central">Order status · seller map</text>
+
+<!-- Connector lines down to orchestration -->
+<line x1="180" y1="660" x2="180" y2="680" stroke="#888780" stroke-width="1" opacity="0.5"/>
+<line x1="500" y1="660" x2="500" y2="680" stroke="#888780" stroke-width="1" opacity="0.5"/>
+<line x1="180" y1="680" x2="500" y2="680" stroke="#888780" stroke-width="1" opacity="0.5"/>
+<line x1="340" y1="680" x2="340" y2="700" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+<!-- ORCHESTRATION -->
+<rect x="140" y="700" width="400" height="80" rx="8" fill="#EAF3DE" stroke="#3B6D11" stroke-width="0.5"/>
+<text font-family="sans-serif" font-size="14" font-weight="500" fill="#173404" x="340" y="726" text-anchor="middle" dominant-baseline="central">Orchestration</text>
+<text font-family="sans-serif" font-size="12" fill="#3B6D11" x="340" y="746" text-anchor="middle" dominant-baseline="central">Databricks Workflows · ecommerce_medallion_pipeline</text>
+<text font-family="sans-serif" font-size="12" fill="#3B6D11" x="340" y="764" text-anchor="middle" dominant-baseline="central">bronze_ingest → silver_clean → gold_model · 2:00 AM IST</text>
+
+<!-- Tech stack footer -->
+<text font-family="sans-serif" font-size="12" fill="#5F5E5A" x="340" y="800" text-anchor="middle" dominant-baseline="central">Azure Databricks · ADLS Gen2 · Delta Lake · Unity Catalog · PySpark</text>
+</svg>
