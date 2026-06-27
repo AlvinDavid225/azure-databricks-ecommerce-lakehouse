@@ -159,11 +159,24 @@ Schemas         : bronze | silver | gold
 
 ## Dashboard
 
-Databricks SQL dashboard with:
-- Monthly revenue trend (2016–2018)
-- Top products by revenue
+Databricks SQL dashboard built on Gold layer queries:
 
-> Screenshots in `docs/screenshots/`
+| Chart | Type | Insight |
+|---|---|---|
+| Revenue Trend by Month | Line | Growth from Oct 2016 → peak ~1M/month in late 2017 |
+| Top 10 Product Categories by Revenue | Donut | `beleza_saude` and `relogios_presentes` lead |
+| Sellers Chart by State | Bar | SP (São Paulo) dominates — ~9M total revenue |
+| Customer Distribution by State | Bar | SP again leads with ~40K customers |
+| Order Status Distribution | Bar | ~100K+ delivered orders — pipeline health confirmed |
+
+![Databricks SQL Dashboard](docs/screenshots/dashboard.png)
+
+## Unity Catalog Lineage
+
+Unity Catalog automatically tracks the full data lineage from Silver → Gold. The graph below shows the four Silver tables (`orders`, `reviews`, `order_items`, `payments`) flowing into `fact_orders` with column-level visibility and timestamped activity.
+
+![UC Lineage — fact_orders (1)](docs/screenshots/uc_lineage_fact_orders_1.png)
+![UC Lineage — fact_orders (2)](docs/screenshots/uc_lineage_fact_orders_2.png)
 
 ---
 
